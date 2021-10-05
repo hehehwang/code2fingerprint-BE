@@ -9,7 +9,7 @@ from matplotlib import pyplot as plt
 from omegaconf import OmegaConf
 
 from getLabeledPathContext import PathContextConvert
-from myCode2seq import Code2Seq
+from Code2Fingerprint import Code2Fingerprint
 from pyAstParser.astParser import PyASTParser
 
 config = OmegaConf.load('config/0927.yaml')
@@ -18,21 +18,20 @@ VOCAB = Vocabulary('vocabulary.pkl',
                    max_tokens=config.data.max_tokens)
 id_to_label = {idx: lab for (lab, idx) in VOCAB.label_to_id.items()}
 converter = PathContextConvert(VOCAB, config.data, True)
-c2s = Code2Seq.load_from_checkpoint('checkpoint/epoch9.ckpt')
-
-
-def transpose(list_of_lists: List[List[int]]) -> List[List[int]]:
-    return [cast(List[int], it) for it in zip(*list_of_lists)]
+c2f = Code2Fingerprint.load_from_checkpoint('checkpoint/epoch9.ckpt')
 
 
 def getOutput(pathContext: str):
+    def transpose(list_of_lists: List[List[int]]) -> List[List[int]]:
+        return [cast(List[int], it) for it in zip(*list_of_lists)]
+
     converted = converter.getPathContext(pathContext)
     from_token = torch.tensor(transpose([path.from_token for path in converted.path_contexts]), dtype=torch.long)
     path_nodes = torch.tensor(transpose([path.path_node for path in converted.path_contexts]), dtype=torch.long)
     to_token = torch.tensor(transpose([path.to_token for path in converted.path_contexts]), dtype=torch.long)
     contexts = torch.tensor([len(converted.path_contexts)])
 
-    encoded, logit = c2s(from_token=from_token,
+    encoded, logit = c2f(from_token=from_token,
                          path_nodes=path_nodes,
                          to_token=to_token,
                          contexts_per_label=contexts,
@@ -73,7 +72,7 @@ while 1:
     parser = PyASTParser()
     parser.readSourceCode(testCode)
 
-    parsed = parser.codeInfo
+    parsed = parser.methodsData
 
     for data in parsed:
         encoded, labels = getOutput(data['parsed_line'])
