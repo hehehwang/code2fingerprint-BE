@@ -80,7 +80,10 @@ def getBatchedFpandPredictions(batchedPathContexts: list):
                                              contexts_per_label=contexts_per_label,
                                              output_length=7)
     predictions = batchedLogit.squeeze(1).argmax(-1).T
-    sequences = [[id_to_label[p.item()] for p in prediction] for prediction in predictions]
+    if len(predictions.size()) != 1:
+        sequences = [[id_to_label[p.item()] for p in prediction] for prediction in predictions]
+    else:
+        sequences = [[id_to_label[p.item()] for p in predictions]]
     predictedWords = [convertSequenceToWord(sequence) for sequence in sequences]
     fingerprints = []
     idx = 0
@@ -167,4 +170,4 @@ def similarity():
 
 
 if __name__ == '__main__':
-    app.run(host='192.168.0.26', port=5689, debug=True)
+    app.run(host='0.0.0.0', port=5689, debug=True)
