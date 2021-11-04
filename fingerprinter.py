@@ -1,16 +1,16 @@
 import json
 from dataclasses import dataclass
-from typing import List, NamedTuple, Tuple, cast
+from typing import List, Tuple, cast
 
 import numpy as np
 import torch
 from code2seq.data.vocabulary import Vocabulary
 from omegaconf import OmegaConf
-from torch.functional import Tensor
 
 from Code2Fingerprint import Code2Fingerprint
 from getLabeledPathContext import PathContextConvert
 from pyAstParser.astParser import PyASTParser
+from referenceDB import retrieveRefs
 
 MODEL_CONFIG = OmegaConf.load("config/0927.yaml")
 VOCAB = Vocabulary(
@@ -106,12 +106,11 @@ def getBatchedFpandPredictions(batchedPathContexts: list) -> Tuple[list, list]:
 
 
 def getFpDifference(fingerPrintHere, fingerPrintThere):
-    # return sum([abs(i) for i in fingerPrintHere - fingerPrintThere])
     return sum(abs(fingerPrintThere - fingerPrintHere))
 
 
 class ScFp:
-    SIM_THRESHOLD = 45
+    SIM_THRESHOLD = 100
 
     def __init__(self, sourceCode: str):
         self.sourceCode = sourceCode
@@ -128,6 +127,33 @@ class ScFp:
                 batchedAnalysedMethods[1][i],
             )
         return
+
+    def findMostSimilarRefMethod(self):
+        refs = retrieveRefs()
+        similarMethods = []
+        for method in self.methods:
+            diff, mostSimilar = min(
+                [
+                    (getFpDifference(method.fingerprint, ref.fingerprint), ref)
+                    for ref in refs
+                ]
+            )
+            if diff < ScFp.SIM_THRESHOLD:
+                similarMethods.append(
+                    {
+                        "methodName": method.methodName,
+                        "sourceCode": method.sourceCode,
+                        "predicted": method.predicted,
+                        "similar_ref_data": {
+                            "file_name": mostSimilar.fileName,
+                            "method_name": mostSimilar.methodName,
+                            "source_code": mostSimilar.sourceCode,
+                            "description": mostSimilar.description,
+                        },
+                        "differency": diff,
+                    }
+                )
+        return similarMethods
 
     @classmethod
     def findSimilarMethodsBtw(
@@ -162,7 +188,7 @@ def main():
     return twitter.morphs(sent)"""
     )
     print(sc.methods[0].fingerprint)
-    print(type(sc.methods[0].fingerprint))
+    print(sc.methods[0].fingerprint.shape)
 
 
 if __name__ == "__main__":

@@ -42,7 +42,6 @@ def similarityBtwSourceCodes_api(request):
     req = {
     "original_source_code": source code encoded base64
     "target_source_code": source code encoded base64
-    "similarity_threshold": threshold to judge its method similar
     }
     """
     req = request.get_json()
@@ -56,6 +55,23 @@ def similarityBtwSourceCodes_api(request):
             "length": len(result),
         }
 
+        return json.dumps(output, cls=NumpyEncoder)
+
+    except Exception as e:
+        return json.dumps({"status": "error", "message": str(e)}), 400
+
+
+def similarityFromRefs_api(request):
+    """
+    req = {
+        "source_code": source code encoded base64
+    }
+    """
+    req = request.get_json()
+    try:
+        sc = ScFp(b64decode(req["source_code"]).decode())
+        result = sc.findMostSimilarRefMethod()
+        output = {"status": "success", "content": result}
         return json.dumps(output, cls=NumpyEncoder)
 
     except Exception as e:

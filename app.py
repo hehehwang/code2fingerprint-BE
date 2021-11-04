@@ -31,5 +31,10 @@ def similarityBtwSourceCodes():
     return similarityBtwSourceCodes_api(request)
 
 
+@app.route("/api/similarityFromRefs", methods=["POST"])
+def similarityFromRefs():
+    return similarityFromRefs_api(request)
+
+
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5689, debug=True)
