@@ -1,10 +1,12 @@
 import json
-from typing import List, cast
+from dataclasses import dataclass
+from typing import List, NamedTuple, Tuple, cast
 
 import numpy as np
 import torch
 from code2seq.data.vocabulary import Vocabulary
 from omegaconf import OmegaConf
+from torch.functional import Tensor
 
 from Code2Fingerprint import Code2Fingerprint
 from getLabeledPathContext import PathContextConvert
@@ -12,19 +14,37 @@ from pyAstParser.astParser import PyASTParser
 
 MODEL_CONFIG = OmegaConf.load("config/0927.yaml")
 VOCAB = Vocabulary(
-    "vocabulary.pkl",
+    "modelData/vocabulary.pkl",
     max_labels=MODEL_CONFIG.data["max_labels"],
     max_tokens=MODEL_CONFIG.data.max_tokens,
 )
 id_to_label = {idx: lab for (lab, idx) in VOCAB.label_to_id.items()}
-converter = PathContextConvert(VOCAB, MODEL_CONFIG.data, True)
-MODEL = Code2Fingerprint.load_from_checkpoint("checkpoint/epoch9.ckpt")
+PCC = PathContextConvert(VOCAB, MODEL_CONFIG.data, True)
+MODEL = Code2Fingerprint.load_from_checkpoint("modelData/epoch9.ckpt")
 
 
-def getParsedCode(sourceCode):  # {'method_name', 'source_code', 'parsed_line'}
+@dataclass
+class ParsedMethod:
+    method_name: str
+    source_code: str
+    parsed_line: List[int]
+    fingerprint: np.ndarray
+    predicted: str
+
+
+def getParsedMethodInSc(sourceCode: str) -> Tuple[ParsedMethod]:
     parser = PyASTParser()
     parser.readSourceCode(sourceCode)
-    return parser.methodsData
+    parsed = parser.methodsData
+    psc = []
+    for p in parsed:
+        psc.append(
+            ParsedMethod(
+                p["method_name"], p["source_code"], p["parsed_line"], None, None
+            )
+        )
+    psc = tuple(psc)
+    return psc
 
 
 def transpose(list_of_lists: List[List[int]]) -> List[List[int]]:
@@ -43,10 +63,8 @@ def convertSequenceToWord(sequence: list):
     return "_".join(converted)
 
 
-def getBatchedFpandPredictions(batchedPathContexts: list):
-    samples = [
-        converter.getPathContext(pathContext) for pathContext in batchedPathContexts
-    ]
+def getBatchedFpandPredictions(batchedPathContexts: list) -> Tuple[list, list]:
+    samples = [PCC.getPathContext(pathContext) for pathContext in batchedPathContexts]
     contexts_per_label = torch.tensor([len(s.path_contexts) for s in samples])
     from_token = torch.tensor(
         transpose([path.from_token for s in samples for path in s.path_contexts]),
@@ -85,18 +103,65 @@ def getBatchedFpandPredictions(batchedPathContexts: list):
     return fingerprints, predictedWords
 
 
-def getAnalysedMethodsFromSC(sourceCode: str):
-    parsedMethods = getParsedCode(sourceCode)
-    batchedAnalysedMethods = getBatchedFpandPredictions(
-        [method["parsed_line"] for method in parsedMethods]
-    )
-    for i, method in enumerate(parsedMethods):
-        parsedMethods[i]["fingerprint"], parsedMethods[i]["predicted"] = (
-            batchedAnalysedMethods[0][i],
-            batchedAnalysedMethods[1][i],
-        )
-    return parsedMethods
-
-
 def getFpDifference(fingerPrintHere, fingerPrintThere):
-    return sum([abs(i) for i in fingerPrintHere - fingerPrintThere])
+    # return sum([abs(i) for i in fingerPrintHere - fingerPrintThere])
+    return sum(abs(fingerPrintThere) - abs(fingerPrintHere))
+
+
+class ScFp:
+    SIM_THRESHOLD = 45
+
+    def __init__(self, sourceCode: str):
+        self.sourceCode = sourceCode
+        self.methods: Tuple[ParsedMethod] = getParsedMethodInSc(sourceCode)
+        self.getMethodsAnalysed()
+
+    def getMethodsAnalysed(self) -> None:
+        batchedAnalysedMethods = getBatchedFpandPredictions(
+            [m.parsed_line for m in self.methods]
+        )
+        for i in range(len(self.methods)):
+            self.methods[i].fingerprint, self.methods[i].predicted = (
+                batchedAnalysedMethods[0][i],
+                batchedAnalysedMethods[1][i],
+            )
+        return
+
+    @classmethod
+    def findSimilarMethodsBtw(
+        cls, originalSourceCode: str, targetSourceCode: str
+    ) -> List[dict]:
+        originalSc = cls(originalSourceCode)
+        targetSc = cls(targetSourceCode)
+        similarMethods = []
+        for targetMethod in targetSc.methods:
+            targetFp = targetMethod.fingerprint
+            difference, mostSimilarMethodFromOriginal = min(
+                [
+                    (getFpDifference(m.fingerprint, targetFp), m)
+                    for m in originalSc.methods
+                ]
+            )
+
+            if difference < cls.SIM_THRESHOLD:
+                similarMethods.append(
+                    {
+                        "original": mostSimilarMethodFromOriginal.method_name,
+                        "target": targetMethod.method_name,
+                        "difference": round(difference, 2),
+                    }
+                )
+        return similarMethods
+
+
+def main():
+    sc = ScFp(
+        """def tokenize(twitter, sent):
+    return twitter.morphs(sent)"""
+    )
+    print(sc.methods[0].fingerprint)
+    print(type(sc.methods[0].fingerprint))
+
+
+if __name__ == "__main__":
+    main()
