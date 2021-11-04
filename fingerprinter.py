@@ -25,9 +25,9 @@ MODEL = Code2Fingerprint.load_from_checkpoint("modelData/epoch9.ckpt")
 
 @dataclass
 class ParsedMethod:
-    method_name: str
-    source_code: str
-    parsed_line: List[int]
+    methodName: str
+    sourceCode: str
+    parsedLine: List[int]
     fingerprint: np.ndarray
     predicted: str
 
@@ -64,6 +64,8 @@ def convertSequenceToWord(sequence: list):
 
 
 def getBatchedFpandPredictions(batchedPathContexts: list) -> Tuple[list, list]:
+    if not batchedPathContexts:
+        return [], []
     samples = [PCC.getPathContext(pathContext) for pathContext in batchedPathContexts]
     contexts_per_label = torch.tensor([len(s.path_contexts) for s in samples])
     from_token = torch.tensor(
@@ -105,7 +107,7 @@ def getBatchedFpandPredictions(batchedPathContexts: list) -> Tuple[list, list]:
 
 def getFpDifference(fingerPrintHere, fingerPrintThere):
     # return sum([abs(i) for i in fingerPrintHere - fingerPrintThere])
-    return sum(abs(fingerPrintThere) - abs(fingerPrintHere))
+    return sum(abs(fingerPrintThere - fingerPrintHere))
 
 
 class ScFp:
@@ -118,7 +120,7 @@ class ScFp:
 
     def getMethodsAnalysed(self) -> None:
         batchedAnalysedMethods = getBatchedFpandPredictions(
-            [m.parsed_line for m in self.methods]
+            [m.parsedLine for m in self.methods]
         )
         for i in range(len(self.methods)):
             self.methods[i].fingerprint, self.methods[i].predicted = (
@@ -146,8 +148,8 @@ class ScFp:
             if difference < cls.SIM_THRESHOLD:
                 similarMethods.append(
                     {
-                        "original": mostSimilarMethodFromOriginal.method_name,
-                        "target": targetMethod.method_name,
+                        "original": mostSimilarMethodFromOriginal.methodName,
+                        "target": targetMethod.methodName,
                         "difference": round(difference, 2),
                     }
                 )
